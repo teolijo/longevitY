@@ -1,0 +1,270 @@
+#!/bin/bash
+
+#BASH SCRIPT FOR RNASEQ ANALYSIS OF HUMAN LONGEVITY PROJECT PAIRED-END RNASEQ DATA
+
+#/!\CAUTION/!\ : This script admits fastq compressed files are available in the specified directory
+#and it takes 4 or 6 threads for several stages of the pipeline.
+
+#Stop pipeline if there is an error
+set -e 
+
+###################################################################
+#Define variables (directories, softwares, array of data names): #
+###################################################################
+
+#Software and data pathways: 
+DIR=/general/path
+
+	##Directories to create before using the pipeline: 
+	DATATEST="$DIR"/path/to/FastQ/files 
+	DIRREF="$DIR"/path/to/reference/sequences
+
+	##Directories which will be created automatically by the pipeline:
+	DIRFASTQ="$DIR"/path/to/save/FastQ/files/after/trimmomatic
+	DIRCOUNTREADS="$DIR"/path/to/kallisto/outputs
+	DIRCOUNTTE="$DIR"/path/to/TEtools/outputs
+	DIRFASTQC="$DIR"/path/to/fastQC/outputs/before/trimmomatic 
+	DIRFASTQCTRIM="$DIR"/path/to/fastQC/outputs/after/trimmomatic 
+
+	DIRTESPEX="$DIR"/path/to/TEspeX/directory
+	DIRCOUNTTESPEX="$DIRTESPEX"/path/to/TEspeX/output
+
+	##Software pathways :
+	KALLISTO=/dir/to/kallisto
+	TETOOLS=/dir/to/TEcount.py #WARNING : TEcount.py script is adapted for non-stranded paired RNAseq data, add '--nofw' option in the bowtie command in the python script to deal with reverse stranded RNAseq (referred as TETOOLS_antisense hereafter)
+	TETOOLS_antisense=/dir/to/TEcount_antisense.py
+	TESPEX=/dir/to/TEspeX.py
+
+	##Names of the reference sequences for TEcount:
+	REF="Name_of_the_reference_transcriptome" #for alignment of reads on gene transcripts, repeat masked transcriptome from UCSC browser
+	ROSETTETXT=/path/to/rosetta_file.txt
+	ROSETTEFASTA=/path/to/Name_of_the_TE_reference_sequences_file #for alignement of reads on TE, from UCSC browser)
+
+	##Names of the reference sequences for TEspeX:
+	CDNAREF=/path/to/cdna_transcripts.fa.gz #from https://www.gencodegenes.org/
+	NCRNAREF=/path/to/lncRNA_transcripts.fa.gz #from https://www.gencodegenes.org/ 
+	DFAM_TE=/path/to/dfam_TE.fa
+	MASKREF=/path/to/sequences_to_be_masked.fa #introns for example
+
+#Precise log file
+LOG_FILE=path/to/"log_file_name.log"
+ERR_FILE=path/to/"log_errors_file_name.log"
+
+if [ ! -d "$LOG_FILE" ];then
+touch "$LOG_FILE"
+fi
+
+exec 1>>$LOG_FILE
+
+if [ ! -d "$ERR_FILE" ];then
+touch "$ERR_FILE"
+fi
+
+exec 2>>$ERR_FILE
+
+#Precise patient file name between  ' ' : declare -a permet de créer un tableau
+
+declare -a data1 
+data=(
+
+'name_file_1'
+'name_file_2'
+'name_file_3'
+'name_file_4' #... and so one...#
+
+)
+
+#################################################################################
+#STEP 1 : QUALITY CONTROL OF FASTQ FILES FROM SEQUENCER :                       #
+#################################################################################
+
+#STEP 1a : FASTQC use on FASTQ files from sequencer :
+##########
+
+#Creation of the directory fastqc_results (when it do not exist) to collect FASTQC outputs :
+if [ ! -d "$DIRFASTQC" ];then
+mkdir "$DIRFASTQC"
+fi
+
+#FASTQC use :
+
+for file in ${data[@]}
+do
+	fastqc "$DATATEST"/"$file""_R1.fastq.gz" --outdir="$DIRFASTQC"
+	fastqc "$DATATEST"/"$file""_R2.fastq.gz" --outdir="$DIRFASTQC"
+done
+
+#To Unzip outputs files from FASTQC to consult graphics in image format (facultative) :
+
+for file in ${data[@]}
+do
+	unzip "$DIRFASTQC"/"$file""_R1_fastqc.zip" -d "$DIRFASTQC"
+	unzip "$DIRFASTQC"/"$file""_R2_fastqc.zip" -d "$DIRFASTQC"
+	
+done
+
+echo "Unzip FASTQC files --> END"
+
+#STEP 1b : TRIMMOMATIC use on FASTQ files from sequencer :
+##########
+
+#Creation of the directory data_test_trim (when it do not exist) to collect TRIMMOMATIC outputs :
+if [ ! -d "$DIRFASTQ" ];then
+mkdir -p "$DIRFASTQ"
+fi
+
+# TRIMMOMATIC use on all files in the precised directory :
+
+for file in ${data[@]}
+do
+	java -jar /path/to/trimmomatic-x.xx.jar PE \
+      -threads 6 \
+    "$DATATEST"/"$file""_R1.fastq.gz" "$DATATEST"/"$file""_R2.fastq.gz" \
+     "$DIRFASTQ"/"$file""_forward_paired.fq.gz" "$DIRFASTQ"/"$file""_forward_unpaired.fq.gz" \
+     "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" "$DIRFASTQ"/"$file""_reverse_unpaired.fq.gz" \
+    ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 
+
+done
+echo "TRIMMOMATIC on all files --> END"
+
+#STEP 1c : FASTQC use on FASTQ files post-trimming :
+##########
+
+#Creation of the directory fastqc_trim_results (when it do not exist) to collect FASTQC post-trimming outputs :
+if [ ! -d "$DIRFASTQCTRIM" ];then
+mkdir "$DIRFASTQCTRIM"
+fi
+
+#FASTQC use on all files in the precised directory :
+
+for file in ${data[@]}
+do
+	fastqc "$DIRFASTQ"/"$file""_forward_paired.fq.gz" --outdir="$DIRFASTQCTRIM" 
+	fastqc "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" --outdir="$DIRFASTQCTRIM"
+	fastqc "$DIRFASTQ"/"$file""_forward_unpaired.fq.gz" --outdir="$DIRFASTQCTRIM"
+	fastqc "$DIRFASTQ"/"$file""_reverse_unpaired.fq.gz" --outdir="$DIRFASTQCTRIM"
+done
+echo "FASTQC post-trimming created --> OK"
+
+##To Unzip outputs files from FASTQC to consult graphics in image format :
+
+for file in ${data[@]}
+do
+	unzip "$DIRFASTQCTRIM"/"$file""_forward_paired_fastqc.zip" -d "$DIRFASTQCTRIM"
+	unzip "$DIRFASTQCTRIM"/"$file""_reverse_paired_fastqc.zip" -d "$DIRFASTQCTRIM"
+	unzip "$DIRFASTQCTRIM"/"$file""_forward_unpaired_fastqc.zip" -d "$DIRFASTQCTRIM"
+	unzip "$DIRFASTQCTRIM"/"$file""_reverse_unpaired_fastqc.zip" -d "$DIRFASTQCTRIM"
+done
+
+echo "Unzip outputs files from FASTQC post-trimming --> END"
+
+
+####################################################################
+#STEP 2 : COUNTING ALIGNED READS ON GENES WITH KALLISTO:          #
+####################################################################
+
+#Creation of index with Kallisto:
+
+echo -e "\n*---------- CREATION INDEX (KALLISTO)"
+"$KALLISTO" index -i "$DIRREF"/"$REF""_kallisto.index" "$DIRREF"/"$REF" 
+
+#Creation of the directory (when it do not exist) to collect output count files:
+if [ ! -d "$DIRCOUNTREADS" ]
+then 
+	mkdir "$DIRCOUNTREADS"
+fi
+
+#Counting FOR STRANDED REVERSE RNA DATA: for our DATASET
+for file in ${data[@]}
+do
+	echo -e "\n*---------- COUNT READS PER GENE (KALLISTO) : ${file}"
+
+	"$KALLISTO" quant -i "$DIRREF"/"$REF""_kallisto.index" -o "$DIRCOUNTREADS"/"$file""_kallisto" -t 4 "$DIRFASTQ"/"$file""_forward_paired.fq.gz" "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" --rf-stranded 
+	
+done
+
+# OR Counting FOR NON STRANDED RNA DATA: for GTEX DATASET
+#for file in ${data[@]}
+#do
+#	echo -e "\n*---------- COUNT READS PER GENE (KALLISTO) : ${file}"
+
+#	"$KALLISTO" quant -i "$DIRREF"/"$REF""_kallisto.index" -o "$DIRCOUNTREADS"/"$file""_kallisto" -t 4 "$DIRFASTQ"/"$file""_forward_paired.fq.gz" "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" 
+	
+#done
+
+################################################################
+#STEP 3A : COUNTING ALIGNED READS ON TE WITH TECOUNT:         #
+################################################################
+
+##Creation of the directory counted_TE (if do not exist) to collect counts table in output:
+if [ ! -d "$DIRCOUNTTE" ]
+then
+	mkdir "$DIRCOUNTTE"
+fi
+
+##Creation of the intermediate directory required from script Python TEcount.py:
+if [ ! -d "$DIR"/"alignment" ]
+then
+	mkdir "$DIR"/"alignment"
+fi
+
+#TEcount use on all files ON REVERSE STRANDED RNASEQ DATA: for our DATASET
+
+for file in ${data[@]}
+do
+	echo -e "\n*---------- COUNT TE Reverse STRANDED : ${file}"
+	
+	python3 "$TETOOLS_antisense" -bowtie2 -rosette "$ROSETTETXT" -column 2 -TE_fasta "$ROSETTEFASTA" -count "$DIRCOUNTTE"/"$file""_1_rstranded_TEtools.txt" -RNA "$DIRFASTQ"/"$file""_forward_paired.fq.gz" -RNApair "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" -insert 200
+	
+done
+
+
+#TEcount use on all files ON NON STRANDED RNASEQ DATA: for GTEX DATASET
+
+#for file in ${data[@]}
+#do
+#	echo -e "\n*---------- COUNT TE (1) NON STRANDED: ${file}"
+	
+#	python3 "$TETOOLS" -bowtie2 -rosette "$ROSETTETXT" -column 2 -TE_fasta "$ROSETTEFASTA" -count "$DIRCOUNTTE"/"$file""_1_TEtools.txt" -RNA "$DIRFASTQ"/"$file""_forward_paired.fq.gz" -RNApair "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" -insert 300
+	
+#done
+
+
+################################################################
+##STEP 3B : COUNTING ALIGNED READS ON TE WITH TESPEX:         # for our DATASET
+################################################################
+
+##Creation of the intermediate directory required from script Python TEspeX.py:
+
+if [ ! -d "$DIRTESPEX" ]
+then
+	mkdir "$DIRTESPEX"
+fi
+
+##Generation of the table with all files to analyze by TEspeX:
+
+for file in ${data[@]}
+
+do
+
+	echo "$DIRFASTQ"/"$file""_forward_paired.fq.gz" >> "$DIRTESPEX"/tmp.forward
+	echo "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" >> "$DIRTESPEX"/tmp.reverse
+
+done
+
+paste "$DIRTESPEX"/tmp.forward "$DIRTESPEX"/tmp.reverse > "$DIRTESPEX"/matrix.samples
+rm "$DIRTESPEX"/tmp.forward "$DIRTESPEX"/tmp.reverse
+
+
+##Utilisation de TEspeX : reverse STRANDED, 150 bp READS, PAIRED-END for our DATASET
+
+source activate TEspeX_deps
+
+
+echo -e "\n*---------- TEspeX for all files"
+
+python3 "$TESPEX" --TE "$DFAM_TE" --cdna "$CDNAREF" --ncrna "$NCRNAREF" --sample "$DIRTESPEX"/matrix.samples --mask "$MASKREF" \
+	--paired T --strand reverse --length 150 --out "$DIRCOUNTTESPEX" --remove T --num_threads 6
+
+
+conda deactivate
