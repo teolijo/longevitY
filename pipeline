@@ -26,9 +26,6 @@ DIR=/general/path
 	DIRFASTQC="$DIR"/path/to/fastQC/outputs/before/trimmomatic 
 	DIRFASTQCTRIM="$DIR"/path/to/fastQC/outputs/after/trimmomatic 
 
-	DIRTESPEX="$DIR"/path/to/TEspeX/directory
-	DIRCOUNTTESPEX="$DIRTESPEX"/path/to/TEspeX/output
-
 	##Software pathways :
 	KALLISTO=/dir/to/kallisto
 	TETOOLS=/dir/to/TEcount.py #WARNING : TEcount.py script is adapted for non-stranded paired RNAseq data, add '--nofw' option in the bowtie command in the python script to deal with reverse stranded RNAseq (referred as TETOOLS_antisense hereafter)
@@ -39,12 +36,6 @@ DIR=/general/path
 	REF="Name_of_the_reference_transcriptome" #for alignment of reads on gene transcripts, repeat masked transcriptome from UCSC browser
 	ROSETTETXT=/path/to/rosetta_file.txt
 	ROSETTEFASTA=/path/to/Name_of_the_TE_reference_sequences_file #for alignement of reads on TE, from UCSC browser)
-
-	##Names of the reference sequences for TEspeX:
-	CDNAREF=/path/to/cdna_transcripts.fa.gz #from https://www.gencodegenes.org/
-	NCRNAREF=/path/to/lncRNA_transcripts.fa.gz #from https://www.gencodegenes.org/ 
-	DFAM_TE=/path/to/dfam_TE.fa
-	MASKREF=/path/to/sequences_to_be_masked.fa #introns for example
 
 #Precise log file
 LOG_FILE=path/to/"log_file_name.log"
@@ -160,7 +151,7 @@ echo "Unzip outputs files from FASTQC post-trimming --> END"
 
 
 ####################################################################
-#STEP 2 : COUNTING ALIGNED READS ON GENES WITH KALLISTO:          #
+#STEP 2 : COUNTING ALIGNED READS ON GENES WITH KALLISTO:           #
 ####################################################################
 
 #Creation of index with Kallisto:
@@ -174,7 +165,7 @@ then
 	mkdir "$DIRCOUNTREADS"
 fi
 
-#Counting FOR STRANDED REVERSE RNA DATA: for our DATASET
+#Counting FOR STRANDED REVERSE RNA DATA: for Gonosome aneuploidy dataset
 for file in ${data[@]}
 do
 	echo -e "\n*---------- COUNT READS PER GENE (KALLISTO) : ${file}"
@@ -183,7 +174,7 @@ do
 	
 done
 
-# OR Counting FOR NON STRANDED RNA DATA: for GTEX DATASET
+# OR Counting FOR NON STRANDED RNA DATA: for GTEX datasets
 #for file in ${data[@]}
 #do
 #	echo -e "\n*---------- COUNT READS PER GENE (KALLISTO) : ${file}"
@@ -193,7 +184,7 @@ done
 #done
 
 ################################################################
-#STEP 3A : COUNTING ALIGNED READS ON TE WITH TECOUNT:         #
+#STEP 3 : COUNTING ALIGNED READS ON TE WITH TECOUNT:           #
 ################################################################
 
 ##Creation of the directory counted_TE (if do not exist) to collect counts table in output:
@@ -208,7 +199,7 @@ then
 	mkdir "$DIR"/"alignment"
 fi
 
-#TEcount use on all files ON REVERSE STRANDED RNASEQ DATA: for our DATASET
+#TEcount use on all files ON REVERSE STRANDED RNASEQ DATA: for Gonosome aneuploidy dataset
 
 for file in ${data[@]}
 do
@@ -219,7 +210,7 @@ do
 done
 
 
-#TEcount use on all files ON NON STRANDED RNASEQ DATA: for GTEX DATASET
+#TEcount use on all files ON NON STRANDED RNASEQ DATA: for GTEX datasets
 
 #for file in ${data[@]}
 #do
@@ -228,43 +219,3 @@ done
 #	python3 "$TETOOLS" -bowtie2 -rosette "$ROSETTETXT" -column 2 -TE_fasta "$ROSETTEFASTA" -count "$DIRCOUNTTE"/"$file""_1_TEtools.txt" -RNA "$DIRFASTQ"/"$file""_forward_paired.fq.gz" -RNApair "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" -insert 300
 	
 #done
-
-
-################################################################
-##STEP 3B : COUNTING ALIGNED READS ON TE WITH TESPEX:         # for our DATASET
-################################################################
-
-##Creation of the intermediate directory required from script Python TEspeX.py:
-
-if [ ! -d "$DIRTESPEX" ]
-then
-	mkdir "$DIRTESPEX"
-fi
-
-##Generation of the table with all files to analyze by TEspeX:
-
-for file in ${data[@]}
-
-do
-
-	echo "$DIRFASTQ"/"$file""_forward_paired.fq.gz" >> "$DIRTESPEX"/tmp.forward
-	echo "$DIRFASTQ"/"$file""_reverse_paired.fq.gz" >> "$DIRTESPEX"/tmp.reverse
-
-done
-
-paste "$DIRTESPEX"/tmp.forward "$DIRTESPEX"/tmp.reverse > "$DIRTESPEX"/matrix.samples
-rm "$DIRTESPEX"/tmp.forward "$DIRTESPEX"/tmp.reverse
-
-
-##Utilisation de TEspeX : reverse STRANDED, 150 bp READS, PAIRED-END for our DATASET
-
-source activate TEspeX_deps
-
-
-echo -e "\n*---------- TEspeX for all files"
-
-python3 "$TESPEX" --TE "$DFAM_TE" --cdna "$CDNAREF" --ncrna "$NCRNAREF" --sample "$DIRTESPEX"/matrix.samples --mask "$MASKREF" \
-	--paired T --strand reverse --length 150 --out "$DIRCOUNTTESPEX" --remove T --num_threads 6
-
-
-conda deactivate
