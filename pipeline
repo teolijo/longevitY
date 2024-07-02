@@ -30,7 +30,6 @@ DIR=/general/path
 	KALLISTO=/dir/to/kallisto
 	TETOOLS=/dir/to/TEcount.py #WARNING : TEcount.py script is adapted for non-stranded paired RNAseq data, add '--nofw' option in the bowtie command in the python script to deal with reverse stranded RNAseq (referred as TETOOLS_antisense hereafter)
 	TETOOLS_antisense=/dir/to/TEcount_antisense.py
-	TESPEX=/dir/to/TEspeX.py
 
 	##Names of the reference sequences for TEcount:
 	REF="Name_of_the_reference_transcriptome" #for alignment of reads on gene transcripts, repeat masked transcriptome from UCSC browser
